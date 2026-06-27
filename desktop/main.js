@@ -13,12 +13,15 @@ let desktopLyricsUserBounds = null;
 let desktopLyricsProgrammaticMove = false;
 let desktopLyricsPointerCapture = false;
 let desktopLyricsMouseIgnored = null;
-let desktopLyricsMousePoller = null;
-let desktopLyricsMousePollerBuffer = '';
+// REMOVED for Linux: PowerShell mouse polling is Windows-only
+// let desktopLyricsMousePoller = null;
+// let desktopLyricsMousePollerBuffer = '';
 let desktopLyricsHotBounds = null;
-let desktopLyricsLastMiddleAt = 0;
-let wallpaperWindow = null;
-let wallpaperState = {};
+// REMOVED for Linux: global middle-click tracking uses Windows APIs
+// let desktopLyricsLastMiddleAt = 0;
+// REMOVED for Linux: wallpaper mode uses Windows WorkerW/Progman APIs
+// let wallpaperWindow = null;
+// let wallpaperState = {};
 let htmlFullscreenActive = false;
 let windowFullscreenActive = false;
 let mainWindowStateTimer = null;
@@ -48,7 +51,8 @@ const CHROMIUM_PERFORMANCE_SWITCHES = [
   ['disable-renderer-backgrounding'],
   ['disable-backgrounding-occluded-windows'],
   ['force_high_performance_gpu'],
-  ['use-angle', 'd3d11'],
+  // REMOVED for Linux: D3D11 ANGLE backend is Windows-only
+  // ['use-angle', 'd3d11'],
 ];
 for (const [name, value] of CHROMIUM_PERFORMANCE_SWITCHES) {
   if (value == null) app.commandLine.appendSwitch(name);
@@ -274,6 +278,7 @@ function getUpdateDownloadDir() {
 
 function shouldEnsureDesktopShortcut() {
   if (process.platform !== 'win32') return false;
+  // Windows-only: .lnk shortcut files
   if (process.env.MINERADIO_NO_DESKTOP_SHORTCUT === '1') return false;
   return app.isPackaged || process.env.MINERADIO_CREATE_DESKTOP_SHORTCUT === '1';
 }
@@ -795,78 +800,14 @@ function pointInBounds(point, bounds) {
     && point.y <= bounds.y + bounds.height;
 }
 
-function handleDesktopLyricsGlobalMiddleClick() {
-  if (!desktopLyricsWindow || desktopLyricsWindow.isDestroyed()) return;
-  if (!desktopLyricsState.enabled) return;
-  const now = Date.now();
-  if (now - desktopLyricsLastMiddleAt < 260) return;
-  const point = screen.getCursorScreenPoint();
-  if (!pointInBounds(point, desktopLyricsHotBoundsOnScreen())) return;
-  desktopLyricsLastMiddleAt = now;
-  const nextLocked = desktopLyricsState.clickThrough === false;
-  desktopLyricsState = { ...desktopLyricsState, clickThrough: nextLocked };
-  desktopLyricsPointerCapture = !nextLocked;
-  applyDesktopLyricsMouseBehavior();
-  broadcastDesktopLyricsLockState();
-}
+// REMOVED for Linux: global middle-click uses Windows GetAsyncKeyState API
+function handleDesktopLyricsGlobalMiddleClick() { /* no-op on Linux */ }
 
-function startDesktopLyricsMousePoller() {
-  if (process.platform !== 'win32' || desktopLyricsMousePoller) return;
-  const script = `
-$ErrorActionPreference = "SilentlyContinue"
-Add-Type @"
-using System;
-using System.Runtime.InteropServices;
-public class MineradioMousePoll {
-  [DllImport("user32.dll")] public static extern short GetAsyncKeyState(int vKey);
-}
-"@
-$prev = $false
-while ($true) {
-  $down = (([MineradioMousePoll]::GetAsyncKeyState(4) -band 0x8000) -ne 0)
-  if ($down -and -not $prev) {
-    [Console]::Out.WriteLine("MMB")
-    [Console]::Out.Flush()
-  }
-  $prev = $down
-  Start-Sleep -Milliseconds 24
-}
-`;
-  try {
-    desktopLyricsMousePoller = spawn('powershell.exe', ['-NoProfile', '-ExecutionPolicy', 'Bypass', '-Command', script], {
-      windowsHide: true,
-      stdio: ['ignore', 'pipe', 'pipe'],
-    });
-    desktopLyricsMousePoller.stdout.on('data', (chunk) => {
-      desktopLyricsMousePollerBuffer += chunk.toString('utf8');
-      const lines = desktopLyricsMousePollerBuffer.split(/\r?\n/);
-      desktopLyricsMousePollerBuffer = lines.pop() || '';
-      lines.forEach((line) => {
-        if (line.trim() === 'MMB') handleDesktopLyricsGlobalMiddleClick();
-      });
-    });
-    desktopLyricsMousePoller.on('exit', () => {
-      desktopLyricsMousePoller = null;
-      desktopLyricsMousePollerBuffer = '';
-    });
-    desktopLyricsMousePoller.on('error', () => {
-      desktopLyricsMousePoller = null;
-      desktopLyricsMousePollerBuffer = '';
-    });
-  } catch (e) {
-    desktopLyricsMousePoller = null;
-    desktopLyricsMousePollerBuffer = '';
-  }
-}
+// REMOVED for Linux: PowerShell mouse polling is Windows-only
+function startDesktopLyricsMousePoller() { /* no-op on Linux */ }
 
-function stopDesktopLyricsMousePoller() {
-  if (!desktopLyricsMousePoller) return;
-  try {
-    desktopLyricsMousePoller.kill();
-  } catch (e) {}
-  desktopLyricsMousePoller = null;
-  desktopLyricsMousePollerBuffer = '';
-}
+// REMOVED for Linux: PowerShell mouse polling is Windows-only
+function stopDesktopLyricsMousePoller() { /* no-op on Linux */ }
 
 function broadcastDesktopLyricsLockState() {
   const locked = desktopLyricsState.clickThrough !== false;
@@ -944,7 +885,7 @@ function createDesktopLyricsWindow(payload = {}) {
   } catch (e) {
     console.warn('Desktop lyrics topmost setup skipped:', e.message);
   }
-  startDesktopLyricsMousePoller();
+  // REMOVED: startDesktopLyricsMousePoller();
   applyDesktopLyricsMouseBehavior();
   positionDesktopLyricsWindow(desktopLyricsState, { force: yChanged || !desktopLyricsUserBounds });
   desktopLyricsWindow.once('ready-to-show', () => {
@@ -982,119 +923,29 @@ function nativeWindowHandleDecimal(win) {
   return String(handle.readUInt32LE(0));
 }
 
+// REMOVED for Linux: attachWallpaperToWorkerW uses Windows User32 APIs
 function attachWallpaperToWorkerW(win) {
-  if (process.platform !== 'win32' || !win || win.isDestroyed()) return;
-  const hwnd = nativeWindowHandleDecimal(win);
-  const script = `
-$ErrorActionPreference = "Stop"
-if (-not ("MineradioNativeWin" -as [type])) {
-Add-Type @"
-using System;
-using System.Runtime.InteropServices;
-public class MineradioNativeWin {
-  public delegate bool EnumWindowsProc(IntPtr hWnd, IntPtr lParam);
-  [DllImport("user32.dll", SetLastError=true)] public static extern IntPtr FindWindow(string lpClassName, string lpWindowName);
-  [DllImport("user32.dll", SetLastError=true)] public static extern IntPtr FindWindowEx(IntPtr parent, IntPtr childAfter, string className, string windowName);
-  [DllImport("user32.dll", SetLastError=true)] public static extern bool EnumWindows(EnumWindowsProc lpEnumFunc, IntPtr lParam);
-  [DllImport("user32.dll", SetLastError=true)] public static extern IntPtr SetParent(IntPtr hWndChild, IntPtr hWndNewParent);
-  [DllImport("user32.dll", SetLastError=true)] public static extern bool SetWindowPos(IntPtr hWnd, IntPtr hWndInsertAfter, int X, int Y, int cx, int cy, uint uFlags);
-  [DllImport("user32.dll", SetLastError=true)] public static extern IntPtr SendMessageTimeout(IntPtr hWnd, uint Msg, IntPtr wParam, IntPtr lParam, uint fuFlags, uint uTimeout, out IntPtr lpdwResult);
-}
-"@
-}
-$progman = [MineradioNativeWin]::FindWindow("Progman", $null)
-$result = [IntPtr]::Zero
-[MineradioNativeWin]::SendMessageTimeout($progman, 0x052C, [IntPtr]::Zero, [IntPtr]::Zero, 0, 1000, [ref]$result) | Out-Null
-$script:workerw = [IntPtr]::Zero
-$enum = [MineradioNativeWin+EnumWindowsProc]{
-  param([IntPtr]$top, [IntPtr]$param)
-  $shell = [MineradioNativeWin]::FindWindowEx($top, [IntPtr]::Zero, "SHELLDLL_DefView", $null)
-  if ($shell -ne [IntPtr]::Zero) {
-    $script:workerw = [MineradioNativeWin]::FindWindowEx([IntPtr]::Zero, $top, "WorkerW", $null)
-  }
-  return $true
-}
-[MineradioNativeWin]::EnumWindows($enum, [IntPtr]::Zero) | Out-Null
-if ($script:workerw -eq [IntPtr]::Zero) { $script:workerw = $progman }
-$target = [IntPtr]::new([Int64]${hwnd})
-[MineradioNativeWin]::SetParent($target, $script:workerw) | Out-Null
-[MineradioNativeWin]::SetWindowPos($target, [IntPtr]::Zero, 0, 0, 0, 0, 0x0013) | Out-Null
-`;
-  execFile('powershell.exe', ['-NoProfile', '-ExecutionPolicy', 'Bypass', '-Command', script], {
-    windowsHide: true,
-    timeout: 5000,
-  }, (error) => {
-    if (error) console.warn('Wallpaper WorkerW attach failed:', error.message);
-  });
+  /* WorkerW/Progman injection is Windows-only */
 }
 
-function positionWallpaperWindow() {
-  if (!wallpaperWindow || wallpaperWindow.isDestroyed()) return;
-  const bounds = screen.getPrimaryDisplay().bounds;
-  wallpaperWindow.setBounds(bounds, false);
-}
+// REMOVED for Linux: wallpaper mode is Windows-only
+function positionWallpaperWindow() { /* no-op on Linux */ }
 
-function sendWallpaperState() {
-  if (!wallpaperWindow || wallpaperWindow.isDestroyed()) return;
-  wallpaperWindow.webContents.send('mineradio-wallpaper-state', wallpaperState);
-}
+// REMOVED for Linux: wallpaper mode is Windows-only
+function sendWallpaperState() { /* no-op on Linux */ }
 
+// REMOVED for Linux: wallpaper mode requires Windows WorkerW/Progman APIs
 function createWallpaperWindow(payload = {}) {
-  wallpaperState = { ...wallpaperState, ...payload, enabled: true };
-  if (wallpaperWindow && !wallpaperWindow.isDestroyed()) {
-    positionWallpaperWindow();
-    sendWallpaperState();
-    return wallpaperWindow;
-  }
-  const bounds = screen.getPrimaryDisplay().bounds;
-  wallpaperWindow = new BrowserWindow({
-    ...bounds,
-    frame: false,
-    transparent: false,
-    backgroundColor: '#050608',
-    hasShadow: false,
-    resizable: false,
-    movable: false,
-    focusable: false,
-    skipTaskbar: true,
-    show: false,
-    title: 'Mineradio Wallpaper',
-    webPreferences: {
-      preload: path.join(__dirname, 'overlay-preload.js'),
-      contextIsolation: true,
-      nodeIntegration: false,
-      sandbox: false,
-      backgroundThrottling: false,
-    },
-  });
-  wallpaperWindow.setIgnoreMouseEvents(true, { forward: true });
-  wallpaperWindow.once('ready-to-show', () => {
-    if (!wallpaperWindow || wallpaperWindow.isDestroyed()) return;
-    positionWallpaperWindow();
-    wallpaperWindow.showInactive();
-    attachWallpaperToWorkerW(wallpaperWindow);
-    sendWallpaperState();
-  });
-  wallpaperWindow.webContents.once('did-finish-load', sendWallpaperState);
-  wallpaperWindow.on('closed', () => {
-    wallpaperWindow = null;
-  });
-  wallpaperWindow.loadURL(overlayUrl('wallpaper.html')).catch((e) => console.warn('Wallpaper load failed:', e.message));
-  return wallpaperWindow;
+  console.log("[Linux] Wallpaper mode is not supported");
+  return null;
 }
 
-function closeWallpaperWindow() {
-  wallpaperState = { ...wallpaperState, enabled: false };
-  if (wallpaperWindow && !wallpaperWindow.isDestroyed()) {
-    sendWallpaperState();
-    wallpaperWindow.close();
-  }
-  wallpaperWindow = null;
-}
+// REMOVED for Linux: wallpaper mode is Windows-only
+function closeWallpaperWindow() { /* no-op on Linux */ }
 
 function closeOverlayWindows() {
   closeDesktopLyricsWindow();
-  closeWallpaperWindow();
+  // REMOVED for Linux: closeWallpaperWindow();
 }
 
 ipcMain.handle('desktop-window-minimize', (event) => {
@@ -1289,33 +1140,9 @@ ipcMain.handle('mineradio-desktop-lyrics-move-by', async (_event, dx, dy) => {
   }
 });
 
-ipcMain.handle('mineradio-wallpaper-set-enabled', async (_event, enabled, payload) => {
-  try {
-    if (enabled) createWallpaperWindow(payload || {});
-    else closeWallpaperWindow();
-    return { ok: true };
-  } catch (e) {
-    return { ok: false, error: e.message || 'WALLPAPER_FAILED' };
-  }
-});
+// REMOVED for Linux: wallpaper IPC handler
 
-ipcMain.handle('mineradio-wallpaper-update', async (_event, payload) => {
-  try {
-    wallpaperState = { ...wallpaperState, ...(payload || {}) };
-    if (wallpaperState.enabled) {
-      createWallpaperWindow(wallpaperState);
-      if (wallpaperWindow && !wallpaperWindow.isDestroyed()) {
-        positionWallpaperWindow();
-        sendWallpaperState();
-      }
-    } else if (wallpaperWindow && !wallpaperWindow.isDestroyed()) {
-      sendWallpaperState();
-    }
-    return { ok: true };
-  } catch (e) {
-    return { ok: false, error: e.message || 'WALLPAPER_UPDATE_FAILED' };
-  }
-});
+// REMOVED for Linux: wallpaper IPC handler
 
 async function createWindow() {
   htmlFullscreenActive = false;
@@ -1427,6 +1254,7 @@ async function createWindow() {
 }
 
 app.setName(APP_NAME);
+// Windows-only: AppUserModelID for taskbar jump-list integration
 if (process.platform === 'win32') app.setAppUserModelId(APP_USER_MODEL_ID);
 
 if (!gotSingleInstanceLock) {
@@ -1441,7 +1269,6 @@ if (!gotSingleInstanceLock) {
   app.whenReady().then(async () => {
     screen.on('display-metrics-changed', () => {
       positionDesktopLyricsWindow();
-      positionWallpaperWindow();
       scheduleWindowStateSend(mainWindow);
     });
     screen.on('display-added', () => scheduleWindowStateSend(mainWindow));
