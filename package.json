@@ -9,7 +9,9 @@
   "scripts": {
     "start": "electron .",
     "build:win": "electron-builder --win nsis",
-    "build:win:dir": "electron-builder --win dir"
+    "build:win:dir": "electron-builder --win dir",
+    "build:linux": "electron-builder --linux AppImage",
+    "build:linux:dir": "electron-builder --linux dir"
   },
   "build": {
     "appId": "com.mineradio.desktop",
@@ -19,9 +21,6 @@
       "buildResources": "build"
     },
     "afterPack": "build/after-pack.js",
-    "toolsets": {
-      "winCodeSign": "1.1.0"
-    },
     "files": [
       "desktop/**/*",
       "public/**/*",
@@ -61,6 +60,19 @@
       "include": "build/installer.nsh",
       "artifactName": "Mineradio-${version}-Setup.${ext}"
     },
+    "linux": {
+      "executableName": "mineradio",
+      "icon": "build/icon.png",
+      "category": "AudioVideo",
+      "target": [
+        {
+          "target": "AppImage",
+          "arch": [
+            "x64"
+          ]
+        }
+      ]
+    },
     "publish": [
       {
         "provider": "github",
@@ -90,7 +102,6 @@
   },
   "devDependencies": {
     "electron": "^42.4.1",
-    "electron-builder": "^26.15.3",
-    "rcedit": "^5.0.2"
+    "electron-builder": "^26.15.3"
   }
 }

@@ -1,10 +1,10 @@
-// ====================================================================
-//  粒子音乐可视化播放器 — Server v2
+// =====================================================================
+//  粒子音乐可视化播放器 - Server v2 (Linux Port)
 //  - 网易云搜索 / 歌曲URL / 封面/音频代理
 //  - 扫码登录 (login_qr_*) + cookie 持久化 (./.cookie)
 //  - 试听检测 (freeTrialInfo) + 全 quality 探测
 //  - 所有受保护 API 都会带上已登录用户的 cookie
-// ====================================================================
+// =====================================================================
 const {
   search,
   cloudsearch,
@@ -56,13 +56,14 @@ const { analyzePodcastDjStream, analyzePodcastDjIntro } = require('./dj-analyzer
 
 const PORT = process.env.PORT || 3000;
 const HOST = process.env.HOST || '0.0.0.0';
-const UA = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36';
+const UA = 'Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36';
 const COOKIE_FILE = process.env.COOKIE_FILE || path.join(__dirname, '.cookie');
 const QQ_COOKIE_FILE = process.env.QQ_COOKIE_FILE || path.join(__dirname, '.qq-cookie');
 const UPDATE_WORK_DIR = process.env.MINERADIO_UPDATE_DIR || path.join(__dirname, 'updates');
 const UPDATE_DOWNLOAD_DIR = process.env.MINERADIO_UPDATE_DOWNLOAD_DIR || path.join(UPDATE_WORK_DIR, 'downloads');
 const UPDATE_PATCH_BACKUP_DIR = process.env.MINERADIO_PATCH_BACKUP_DIR || path.join(UPDATE_WORK_DIR, 'backups', 'patches');
-const BEATMAP_CACHE_DIR = process.env.MINERADIO_BEAT_CACHE_DIR || 'D:\\MineradioCache\\beatmaps';
+// Use cross-platform cache dir instead of hardcoded Windows path
+const BEATMAP_CACHE_DIR = process.env.MINERADIO_BEAT_CACHE_DIR || path.join(require('os').homedir(), '.cache', 'Mineradio', 'beatmaps');
 const APP_PACKAGE = readPackageInfo();
 const APP_VERSION = process.env.MINERADIO_VERSION || APP_PACKAGE.version || '0.9.11';
 const UPDATE_CONFIG = readUpdateConfig(APP_PACKAGE);
@@ -218,7 +219,7 @@ function parseGitHubRepository(input) {
   if (!raw) return null;
   const direct = raw.match(/^([A-Za-z0-9_.-]+)\/([A-Za-z0-9_.-]+)$/);
   if (direct) return { owner: direct[1], repo: direct[2].replace(/\.git$/i, '') };
-  const github = raw.match(/github\.com[:/]([A-Za-z0-9_.-]+)\/([A-Za-z0-9_.-]+?)(?:\.git)?(?:[#/?].*)?$/i);
+  const github = raw.match(/github\.com[:\/]([A-Za-z0-9_.-]+)\/([A-Za-z0-9_.-]+?)(?:\.git)?(?:[#\/?].*)?$/i);
   if (github) return { owner: github[1], repo: github[2].replace(/\.git$/i, '') };
   return null;
 }
@@ -506,23 +507,15 @@ async function fetchManifestUpdateInfo(ref) {
 }
 function beatCacheRootInfo() {
   const dir = path.resolve(BEATMAP_CACHE_DIR);
-  const root = path.parse(dir).root;
-  const drive = root ? root.replace(/[\\\/]+$/, '').toUpperCase() : '';
-  const allowed = !!root && !/^C:$/i.test(drive);
-  const available = allowed && fs.existsSync(root);
-  return { dir, root, drive, allowed, available };
+  // On Linux/macOS, always allow cache in home directory
+  const available = fs.existsSync(path.dirname(dir));
+  return { dir, available };
 }
 function ensureBeatMapCacheDir() {
   const info = beatCacheRootInfo();
-  if (!info.allowed) {
-    const err = new Error('BEAT_CACHE_ON_C_DRIVE_DISABLED');
-    err.code = 'BEAT_CACHE_ON_C_DRIVE_DISABLED';
-    err.info = info;
-    throw err;
-  }
   if (!info.available) {
-    const err = new Error('BEAT_CACHE_DRIVE_UNAVAILABLE');
-    err.code = 'BEAT_CACHE_DRIVE_UNAVAILABLE';
+    const err = new Error('BEAT_CACHE_DIR_UNAVAILABLE');
+    err.code = 'BEAT_CACHE_DIR_UNAVAILABLE';
     err.info = info;
     throw err;
   }
@@ -766,7 +759,7 @@ async function fetchLatestUpdateInfo() {
 function safeUpdateFileName(name, version) {
   const raw = String(name || '').trim() || `Mineradio-${version || APP_VERSION}.exe`;
   const cleaned = raw
-    .replace(/[<>:"/\\|?*\x00-\x1F]/g, '-')
+    .replace(/[<>:\"/\\|?*\x00-\x1F]/g, '-')
     .replace(/\s+/g, ' ')
     .trim()
     .slice(0, 160);
@@ -2161,7 +2154,7 @@ function weatherTitleKey(song) {
   return String(song && song.name || '')
     .toLowerCase()
     .replace(/[（(][^）)]*[）)]/g, '')
-    .replace(/[\s._\-·'’"“”「」《》:：/\\|]+/g, '')
+    .replace(/[\s._\-·'""「」《》:：/\\|]+/g, '')
     .trim();
 }
 
@@ -2395,7 +2388,7 @@ function mapQQPlaylistTrack(raw) {
     mediaMid: (track.file && track.file.media_mid) || track.strMediaMid || track.media_mid || raw.strMediaMid || '',
     name: track.name || track.songname || raw.songname || '',
     artist: artists.map(a => a.name).join(' / ') || track.singername || raw.singername || '',
-    artists,
+    artists: artists.length ? artists : (fallback.artists || []),
     artistId: artists[0] && (artists[0].id || artists[0].mid),
     artistMid: artists[0] && artists[0].mid,
     album: album.name || album.title || track.albumname || raw.albumname || '',
@@ -3249,6 +3242,7 @@ const server = http.createServer(async (req, res) => {
       name: APP_PACKAGE.name || 'mineradio',
       productName: APP_PACKAGE.productName || 'Mineradio',
       version: APP_VERSION,
+      platform: process.platform,
       update: {
         provider: UPDATE_CONFIG.provider,
         configured: UPDATE_CONFIG.configured,
@@ -3310,7 +3304,7 @@ const server = http.createServer(async (req, res) => {
     const id = url.searchParams.get('id') || '';
     const job = id
       ? updateDownloadJobs.get(id)
-      : Array.from(updateDownloadJobs.values()).sort((a, b) => (b.createdAt || 0) - (a.createdAt || 0)).find(item => item.mode === 'patch');
+      : Array.from(updateDownloadJobs.values()).sort((a, b) => (a.createdAt || 0) - (a.createdAt || 0)).find(item => item.mode === 'patch');
     sendJSON(res, publicUpdateJob(job), job ? 200 : 404);
     return;
   }
@@ -3318,11 +3312,10 @@ const server = http.createServer(async (req, res) => {
   if (pn === '/api/beatmap/cache/status') {
     const info = beatCacheRootInfo();
     sendJSON(res, {
-      enabled: info.allowed && info.available,
+      enabled: info.available,
       dir: info.dir,
-      drive: info.drive,
-      reason: !info.allowed ? 'C_DRIVE_DISABLED' : (!info.available ? 'TARGET_DRIVE_UNAVAILABLE' : ''),
-      mode: info.allowed && info.available ? 'disk' : 'memory-only',
+      reason: !info.available ? 'TARGET_CACHE_DIR_UNAVAILABLE' : '',
+      mode: info.available ? 'disk' : 'memory-only',
     });
     return;
   }
@@ -4195,8 +4188,9 @@ const server = http.createServer(async (req, res) => {
 
 server.listen(PORT, HOST, () => {
   console.log('======================================================');
-  console.log(' 粒子音乐可视化 v2  →  http://localhost:' + PORT);
+  console.log(' 粒子音乐可视化 v2 (Linux Port) -> http://localhost:' + PORT);
   console.log(' 登录态: ' + (userCookie ? '已登录(cookie已加载)' : '未登录'));
+  console.log(' 平台: ' + process.platform);
   console.log('======================================================');
 });
 

@@ -41,7 +41,11 @@ function resolveRcedit(projectDir) {
 }
 
 module.exports = async function afterPack(context) {
-  if (context.electronPlatformName !== 'win32') return;
+  // Skip non-Windows platforms (Linux, macOS)
+  if (context.electronPlatformName !== 'win32') {
+    console.log('  • afterPack skipped for ' + context.electronPlatformName);
+    return;
+  }
 
   const appName = context.packager.appInfo.productFilename || 'Mineradio';
   const exePath = path.join(context.appOutDir, `${appName}.exe`);
